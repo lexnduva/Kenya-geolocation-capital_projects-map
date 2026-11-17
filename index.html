@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Kenya Donor Projects Map</title>
+<link rel="stylesheet" href="lib/leaflet.css">
+<style>
+/* ==========================================================================
+   Colours and layout. Sector dot colours are set in CONFIG (in the script).
+   ========================================================================== */
+:root{
+  --surface:#F7F8F7; --panel:#FFFFFF; --ink:#17252A; --muted:#56666B; --rule:#DCE3E0;
+  --sea:#D3E3E6; --land:#E9EDEA; --edge:#A9B6B2; --select:#C98A0F;
+  --chip:#EEF2F0; --chip-on:#17252A; --chip-on-ink:#FFFFFF; --focus:#1F6FB2; --link:#1F6FB2;
+  --bar:#56666B; --warn-bg:#FFF4D6; --warn-ink:#5A4300;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --surface:#111819; --panel:#172123; --ink:#E6ECEA; --muted:#A3B2B5; --rule:#2B383B;
+    --sea:#1B2A2D; --land:#273437; --edge:#4D6064; --select:#F0B43C;
+    --chip:#223033; --chip-on:#E6ECEA; --chip-on-ink:#111819; --focus:#7FB2E5; --link:#8DBDEB;
+    --bar:#A3B2B5; --warn-bg:#3A3110; --warn-ink:#F3DE9A;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"]{
+  --surface:#111819; --panel:#172123; --ink:#E6ECEA; --muted:#A3B2B5; --rule:#2B383B;
+  --sea:#1B2A2D; --land:#273437; --edge:#4D6064; --select:#F0B43C;
+  --chip:#223033; --chip-on:#E6ECEA; --chip-on-ink:#111819; --focus:#7FB2E5; --link:#8DBDEB;
+  --bar:#A3B2B5; --warn-bg:#3A3110; --warn-ink:#F3DE9A;
+  color-scheme: dark;
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--surface); color:var(--ink); font-family:"Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size:15px; line-height:1.45; font-variant-numeric:tabular-nums}
+.top{display:grid; grid-template-columns:minmax(320px,390px) 1fr; height:100vh; height:100dvh}
+.panel{background:var(--panel); border-right:1px solid var(--rule); overflow-y:auto; padding:20px 20px 26px}
+.mapwrap{position:relative; min-height:0}
+#map{position:absolute; inset:0; background:var(--sea)}
+h1{font-size:1.4rem; line-height:1.2; margin:0 0 6px; letter-spacing:-.01em}
+.lede{color:var(--muted); margin:0 0 16px; font-size:.92rem}
+fieldset{border:0; padding:0; margin:0 0 11px}
+legend.flabel{font-size:.8rem; color:var(--muted); margin-bottom:5px; padding:0}
+.chips{display:flex; flex-wrap:wrap; gap:6px}
+.chip{appearance:none; border:1px solid transparent; background:var(--chip); color:var(--ink); font:inherit; font-size:.85rem;
+  padding:5px 11px; border-radius:999px; cursor:pointer; line-height:1.3}
+.chip[aria-pressed="true"]{background:var(--chip-on); color:var(--chip-on-ink); font-weight:600}
+.chip:focus-visible, select:focus-visible, .linkbtn:focus-visible, .countybtn:focus-visible, th button:focus-visible{outline:2px solid var(--focus); outline-offset:2px}
+.dot{display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:6px; vertical-align:0}
+.ring{display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:6px; vertical-align:0; border:2.5px solid var(--muted); background:var(--panel)}
+.row{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
+select{font:inherit; font-size:.9rem; color:var(--ink); background:var(--chip); border:1px solid var(--rule); border-radius:8px; padding:6px 8px; max-width:100%}
+.summary{margin:16px 0 4px; padding-top:14px; border-top:1px solid var(--rule)}
+.big{font-size:1.9rem; font-weight:700; letter-spacing:-.02em; line-height:1.1}
+.sub{color:var(--muted); font-size:.86rem}
+.stats{display:grid; grid-template-columns:1fr 1fr; gap:10px 14px; margin:12px 0 4px}
+.stat b{display:block; font-size:1.02rem}
+.stat span{color:var(--muted); font-size:.8rem}
+h2{font-size:1.02rem; margin:20px 0 8px}
+.countylist,.plist{list-style:none; padding:0; margin:0}
+.countybtn{appearance:none; background:none; border:0; border-bottom:1px solid var(--rule); width:100%; text-align:left; font:inherit; color:var(--ink);
+  padding:8px 0; display:grid; grid-template-columns:1fr auto; gap:6px; cursor:pointer}
+.countybtn:hover .cname{text-decoration:underline}
+.bar{grid-column:1/-1; height:4px; background:var(--chip); border-radius:2px; overflow:hidden}
+.bar i{display:block; height:100%; background:var(--bar)}
+.plist li{padding:10px 0; border-bottom:1px solid var(--rule)}
+.pname{font-weight:600; font-size:.92rem}
+.pmeta{color:var(--muted); font-size:.83rem; margin-top:2px}
+.pamt{font-size:.87rem; margin-top:3px}
+.tag{display:inline-block; font-size:.72rem; font-weight:600; padding:1px 7px; border-radius:999px; background:var(--chip); color:var(--ink); margin-left:6px; vertical-align:1px}
+.linkbtn{appearance:none; background:none; border:0; padding:0; font:inherit; color:var(--link); cursor:pointer; text-decoration:underline; font-size:.9rem}
+.note{color:var(--muted); font-size:.82rem; margin-top:16px}
+.warn{background:var(--warn-bg); color:var(--warn-ink); border-radius:8px; padding:9px 11px; font-size:.84rem; margin-top:14px}
+.empty{color:var(--muted); padding:10px 0}
+.legend{background:var(--panel); color:var(--ink); border-radius:8px; padding:10px 12px; font-size:.8rem; line-height:1.6;
+  box-shadow:0 1px 3px rgba(0,0,0,.2); font-family:inherit}
+.legend b{display:block; margin-bottom:2px}
+.legend hr{border:0; border-top:1px solid var(--rule); margin:5px 0}
+.leaflet-container{font-family:inherit; background:var(--sea)}
+.leaflet-tooltip.tip{background:var(--panel); color:var(--ink); border:1px solid var(--rule); border-radius:6px; box-shadow:0 2px 6px rgba(0,0,0,.15); font-size:.84rem; padding:6px 9px; max-width:280px; white-space:normal}
+.leaflet-tooltip.tip::before{display:none}
+.tip b{display:block}
+.leaflet-control-attribution{font-size:10px}
+.leaflet-bar a{background:var(--panel); color:var(--ink); border-bottom-color:var(--rule)}
+.loadmsg{position:absolute; inset:0; display:grid; place-items:center; padding:24px; text-align:center; color:var(--muted); z-index:500}
+.loadmsg.error{color:var(--ink)}
+/* table */
+.tablesec{padding:28px 20px 40px; max-width:1400px; margin:0 auto}
+.tablesec h2{font-size:1.2rem; margin:0 0 4px}
+.tablewrap{overflow-x:auto; border:1px solid var(--rule); border-radius:8px; background:var(--panel); margin-top:12px}
+table{border-collapse:collapse; width:100%; min-width:900px; font-size:.86rem}
+caption{text-align:left; padding:0; caption-side:top}
+th,td{padding:8px 10px; text-align:left; vertical-align:top; border-bottom:1px solid var(--rule)}
+th{background:var(--chip); font-weight:600; white-space:nowrap; position:sticky; top:0}
+th button{appearance:none; background:none; border:0; font:inherit; color:inherit; cursor:pointer; padding:0}
+th button::after{content:""; margin-left:4px; color:var(--muted)}
+th[aria-sort="ascending"] button::after{content:"▲"}
+th[aria-sort="descending"] button::after{content:"▼"}
+td.num,th.num{text-align:right}
+tr:last-child td{border-bottom:0}
+@media (max-width:760px){
+  .top{grid-template-columns:1fr; grid-template-rows:58vh auto; height:auto}
+  .mapwrap{grid-row:1; height:58vh}
+  .panel{grid-row:2; border-right:0; border-top:1px solid var(--rule); overflow:visible}
+  h1{font-size:1.22rem}
+  .legend{font-size:.72rem; padding:6px 8px; line-height:1.45}
+  .tablesec{padding:22px 12px 32px}
+}
+@media (prefers-reduced-motion: reduce){ *{transition:none !important; animation:none !important} }
+</style>
+</head>
+<body>
+<div class="top">
+  <aside class="panel">
+    <h1>Kenya donor-funded projects</h1>
+    <p class="lede">Health, Water and Infrastructure projects financed by external loans and grants in Kenya’s budget. Each dot is a project; click a county or dot to see its projects.</p>
+
+    <fieldset><legend class="flabel">Map shows</legend><div class="chips" id="f-category"></div></fieldset>
+    <fieldset><legend class="flabel">Status</legend><div class="chips" id="f-status"></div></fieldset>
+    <fieldset><legend class="flabel">Financial year</legend><div class="chips" id="f-fy"></div></fieldset>
+    <fieldset><legend class="flabel">Sector</legend><div class="chips" id="f-sector"></div></fieldset>
+    <fieldset><legend class="flabel">Funding</legend><div class="chips" id="f-type"></div></fieldset>
+    <div class="row"><label for="jump" class="sub">Go to county</label><select id="jump"><option value="">Choose a county</option></select></div>
+
+    <section id="detail" aria-live="polite"></section>
+  </aside>
+  <div class="mapwrap">
+    <div id="map" role="region" aria-label="Map of Kenya with a dot for each donor-funded project"></div>
+    <div class="loadmsg" id="loadmsg">Loading project data…</div>
+  </div>
+</div>
+
+<section class="tablesec" aria-labelledby="t-title">
+  <h2 id="t-title">National and unspecified projects</h2>
+  <p class="sub" id="t-sub">Projects with no single county, so they are not on the map. The table follows the filters above.</p>
+  <div class="tablewrap">
+    <table id="offtable">
+      <caption class="sub" style="padding:10px 10px 0" id="t-cap"></caption>
+      <thead><tr></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</section>
+
+<script src="lib/leaflet.js"></script>
+<script src="lib/papaparse.min.js"></script>
+<script>
+/* ==========================================================================
+   SETTINGS: the parts you are most likely to change
+   ========================================================================== */
+const CONFIG = {
+  projectsFile: 'data/projects.csv',          // the project list (edit this to add or update projects)
+  countiesFile: 'data/kenya_counties.geojson',// county boundaries
+  centresFile:  'data/county_centres.csv',    // where each county's dots are drawn
+  basemap: true,                               // true = OpenStreetMap streets behind the counties
+  sectorColours: {                             // dot colour for each sector (add a line for a new sector)
+    'Health':         '#2E9E5B',
+    'Water':          '#2471C7',
+    'Infrastructure': '#D23A2C'
+  },
+  otherSectorColour: '#8A8F91',                // used for any sector not listed above
+  completedStatuses: ['Completed'],            // these statuses are drawn as rings
+  countyAliases: {                             // town or alternative names → county
+    'Kitale':'Trans Nzoia', 'Malindi':'Kilifi', 'Eldoret':'Uasin Gishu', 'Thika':'Kiambu', 'Litein':'Kericho',
+    'Nyahururu':'Laikipia', 'Naivasha':'Nakuru', 'Lodwar':'Turkana', 'Voi':'Taita Taveta', 'Kapenguria':'West Pokot',
+    'Moyale':'Marsabit', 'Hola':'Tana River', 'Garsen':'Tana River', 'Thara Nithi':'Tharaka Nithi'
+  }
+};
+
+(function(){
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const key = s => String(s || '').toLowerCase().replace(/\(.*$/, '').replace(/county|city/g, '').replace(/[^a-z]/g, '');
+  const num = v => { const n = Number(String(v == null ? '' : v).replace(/[^0-9.\-]/g, '')); return isFinite(n) ? n : 0; };
+  const ksh = v => v >= 1e9 ? 'KSh ' + (v/1e9).toFixed(v >= 1e10 ? 0 : 1) + ' bn' : v >= 1e6 ? 'KSh ' + Math.round(v/1e6) + ' m' : v > 0 ? 'KSh ' + Math.round(v/1e3) + ' k' : 'KSh 0';
+  const colour = sector => CONFIG.sectorColours[sector] || CONFIG.otherSectorColour;
+  const fyOrder = fy => num(String(fy).slice(0, 4));
+  const isCompleted = s => CONFIG.completedStatuses.some(c => c.toLowerCase() === String(s || '').toLowerCase());
+
+  function fail(msg){ const m = $('loadmsg'); m.classList.add('error'); m.textContent = msg; }
+
+  const getText = url => fetch(url, {cache:'no-cache'}).then(r => { if (!r.ok) throw new Error(url + ' (' + r.status + ')'); return r.text(); });
+  Promise.all([getText(CONFIG.projectsFile), getText(CONFIG.countiesFile), getText(CONFIG.centresFile)])
+    .then(([projCsv, geoTxt, centCsv]) => start(projCsv, JSON.parse(geoTxt), centCsv))
+    .catch(err => {
+      console.error(err);
+      fail(location.protocol === 'file:'
+        ? 'The map needs to be opened through a web server, not by double-clicking the file. See step 3 of the guide.'
+        : 'Could not load the map data: ' + err.message + '. Check that the data folder sits next to index.html.');
+    });
+
+  function parseCsv(text){
+    return Papa.parse(text, {header:true, skipEmptyLines:'greedy',
+      transformHeader: h => h.replace(/^﻿/, '').trim().toLowerCase().replace(/\s+/g, '_')}).data;
+  }
+
+  function start(projCsv, GEO, centCsv){
+    $('loadmsg').remove();
+
+    // ---------- counties and their dot centres
+    const countyNames = GEO.features.map(f => f.properties.county).sort();
+    const countyByKey = {};
+    countyNames.forEach(c => countyByKey[key(c)] = c);
+    Object.entries(CONFIG.countyAliases).forEach(([a, c]) => { if (countyByKey[key(c)]) countyByKey[key(a)] = countyByKey[key(c)]; });
+    const CENT = {};
+    parseCsv(centCsv).forEach(r => { const c = countyByKey[key(r.county)]; if (c) CENT[c] = [num(r.latitude), num(r.longitude)]; });
+
+    // ---------- project lines
+    const unknownCounties = {};
+    const lines = parseCsv(projCsv).filter(r => r.project_name && String(r.project_name).trim()).map((r, i) => {
+      const raw = String(r.counties || '').trim();
+      let loc = 'County', counties = [];
+      if (!raw) loc = 'Not specified';
+      else if (/national|countrywide|nationwide|all\s*47|all counties/i.test(raw)) loc = 'National';
+      else {
+        raw.split(/;|,|\band\b|\//i).map(s => s.trim()).filter(Boolean).forEach(part => {
+          const c = countyByKey[key(part)];
+          if (c) { if (!counties.includes(c)) counties.push(c); }
+          else unknownCounties[part] = (unknownCounties[part] || 0) + 1;
+        });
+        if (!counties.length) loc = 'Not specified';
+      }
+      const lat = num(r.latitude), lng = num(r.longitude);
+      const cat = /programme|program/i.test(String(r.category || '')) ? 'Programme' : 'Project';
+      return {
+        id: r.project_id || ('row' + i), key: String(r.project_key || '').trim() || String(r.project_name).trim(),
+        name: String(r.project_name).trim(), category: cat,
+        fy: String(r.financial_year || '').trim(), sector: String(r.sector || '').trim() || 'Other',
+        donor: String(r.donor || '').trim(), type: String(r.funding_type || '').trim(),
+        amount: num(r.amount_ksh), completion: num(r.completion_year) || null,
+        status: String(r.status || '').trim() || 'Not stated', statusNote: String(r.status_note || '').trim(),
+        loc, counties, point: (lat && lng) ? [lat, lng] : null
+      };
+    });
+
+    // ---------- filters (options come from the data, so new years or sectors appear automatically)
+    const uniq = (f, sort) => [...new Set(lines.map(f).filter(Boolean))].sort(sort);
+    const YEARS = uniq(l => l.fy, (a, b) => fyOrder(a) - fyOrder(b));
+    const SECTORS = uniq(l => l.sector, (a, b) => (Object.keys(CONFIG.sectorColours).indexOf(a) + 99) % 99 - (Object.keys(CONFIG.sectorColours).indexOf(b) + 99) % 99 || a.localeCompare(b));
+    const STATUS_ORDER = ['Ongoing', 'Completed', 'Planned', 'Cancelled', 'Not stated'];
+    const STATUSES = uniq(l => l.status, (a, b) => ((STATUS_ORDER.indexOf(a) + 99) % 99) - ((STATUS_ORDER.indexOf(b) + 99) % 99) || a.localeCompare(b));
+    const state = {category:'All', status:'All', fy:'All', sector:'All', type:'All', county:null};
+
+    function chips(id, options, prop, labels, dotFor){
+      const box = $(id);
+      options.forEach(v => {
+        const b = el('button', 'chip', labels && labels[v] || v);
+        b.type = 'button'; b.setAttribute('aria-pressed', String(state[prop] === v));
+        if (dotFor && dotFor(v)) { const d = el('span', 'dot'); d.style.background = dotFor(v); b.prepend(d); }
+        b.addEventListener('click', () => {
+          state[prop] = v;
+          box.querySelectorAll('.chip').forEach(c => c.setAttribute('aria-pressed', String(c === b)));
+          render();
+        });
+        box.appendChild(b);
+      });
+    }
+    chips('f-category', ['All', 'Project', 'Programme'], 'category', {All:'All', Project:'Projects', Programme:'Programmes'});
+    chips('f-status', ['All', ...STATUSES], 'status');
+    chips('f-fy', ['All', ...YEARS], 'fy');
+    chips('f-sector', ['All', ...SECTORS], 'sector', null, v => v === 'All' ? null : colour(v));
+    chips('f-type', ['All', 'Loan', 'Grant'], 'type', {All:'All', Loan:'Loans', Grant:'Grants'});
+    const jump = $('jump');
+    countyNames.forEach(c => { const o = el('option', null, c); o.value = c; jump.appendChild(o); });
+    jump.addEventListener('change', () => { if (jump.value) selectCounty(jump.value, true); });
+
+    // ---------- group lines into projects (one project can span years, donors and counties)
+    function groupProjects(list){
+      const g = new Map();
+      list.forEach(l => {
+        let p = g.get(l.key);
+        if (!p) { p = {key:l.key, name:l.name, category:l.category, sector:l.sector, latestFy:-1, statusFy:-1, status:'Not stated', statusNote:'',
+          donors:new Set(), years:new Set(), types:new Set(), alloc:0, share:0, completion:null, point:null, lines:[]}; g.set(l.key, p); }
+        const y = fyOrder(l.fy);
+        if (y >= p.latestFy) { p.latestFy = y; p.name = l.name; p.category = l.category; p.sector = l.sector; }
+        if (l.status !== 'Not stated' && y >= p.statusFy) { p.statusFy = y; p.status = l.status; p.statusNote = l.statusNote; }
+        if (l.donor) p.donors.add(l.donor); if (l.fy) p.years.add(l.fy); if (l.type) p.types.add(l.type);
+        p.alloc += l.amount; p.share += (l._share != null ? l._share : l.amount);
+        if (l.completion) p.completion = Math.max(p.completion || 0, l.completion);
+        if (l.point && !p.point) p.point = l.point;
+        p.lines.push(l);
+      });
+      return [...g.values()];
+    }
+    // the status / category of a project is taken across ALL its years, so filters stay consistent
+    const projectInfo = new Map(groupProjects(lines).map(p => [p.key, p]));
+
+    function filteredLines(){
+      return lines.filter(l => {
+        const info = projectInfo.get(l.key);
+        return (state.fy === 'All' || l.fy === state.fy) && (state.sector === 'All' || l.sector === state.sector)
+          && (state.type === 'All' || l.type === state.type)
+          && (state.category === 'All' || info.category === state.category)
+          && (state.status === 'All' || info.status === state.status);
+      });
+    }
+
+    // ---------- map
+    const map = L.map('map', {zoomSnap:0.25, minZoom:5, maxZoom:CONFIG.basemap ? 16 : 11});
+    map.attributionControl.setPrefix('<a href="https://leafletjs.com">Leaflet</a>');
+    if (CONFIG.basemap) {
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+        {maxZoom:19, attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'}).addTo(map);
+    } else {
+      map.attributionControl.addAttribution('County boundaries &copy; OpenStreetMap contributors');
+    }
+    const countyLayer = L.geoJSON(GEO, {
+      style: () => countyStyle(false),
+      onEachFeature: (f, lyr) => {
+        lyr.on('click', () => selectCounty(f.properties.county, false));
+        lyr.bindTooltip(f.properties.county, {sticky:true, className:'tip', direction:'top', offset:[0,-8]});
+      }
+    }).addTo(map);
+    function countyStyle(sel){
+      return CONFIG.basemap
+        ? {weight: sel ? 3 : 1, color: sel ? css('--select') : '#5B6B70', fillColor: sel ? css('--select') : '#FFFFFF', fillOpacity: sel ? 0.12 : 0.05}
+        : {weight: sel ? 3 : 0.8, color: sel ? css('--select') : css('--edge'), fillColor: css('--land'), fillOpacity: 1};
+    }
+    const bounds = countyLayer.getBounds();
+    map.fitBounds(bounds, {padding:[12,12]});
+    map.setMaxBounds(bounds.pad(0.6));
+    window.addEventListener('resize', () => map.invalidateSize());
+
+    const legend = L.control({position:'bottomright'});
+    legend.onAdd = () => { const d = L.DomUtil.create('div', 'legend'); d.id = 'legend'; return d; };
+    legend.addTo(map);
+    function drawLegend(byCounty){
+      const box = $('legend'); box.replaceChildren();
+      box.appendChild(el('b', null, 'Each dot is a project'));
+      const counts = {}; let done = 0, total = 0;
+      Object.values(byCounty).forEach(list => list.forEach(p => { counts[p.sector] = (counts[p.sector] || 0) + 1; total++; if (isCompleted(p.status)) done++; }));
+      const sectorsShown = [...new Set([...Object.keys(CONFIG.sectorColours), ...Object.keys(counts)])];
+      sectorsShown.forEach(s => {
+        if (!counts[s] && !CONFIG.sectorColours[s]) return;
+        const line = el('div'); const d = el('span', 'dot'); d.style.background = colour(s); line.appendChild(d);
+        line.appendChild(document.createTextNode(s + ' (' + (counts[s] || 0) + ')')); box.appendChild(line);
+      });
+      box.appendChild(el('hr'));
+      const a = el('div'); const f = el('span', 'dot'); f.style.background = css('--muted'); a.appendChild(f); a.appendChild(document.createTextNode('Ongoing, planned or not stated')); box.appendChild(a);
+      const b = el('div'); b.appendChild(el('span', 'ring')); b.appendChild(document.createTextNode('Completed (' + done + ')')); box.appendChild(b);
+    }
+
+    const dotLayer = L.layerGroup().addTo(map);
+    let current = {byCounty:{}};
+    function drawDots(){
+      dotLayer.clearLayers();
+      const GA = Math.PI * (3 - Math.sqrt(5)), STEP = 6.6;
+      Object.entries(current.byCounty).forEach(([c, list]) => {
+        if (!CENT[c]) return;
+        const ctr = map.latLngToLayerPoint(CENT[c]);
+        let i = 0;
+        list.forEach(p => {
+          let ll;
+          if (p.point) ll = L.latLng(p.point);               // exact location given in the CSV
+          else { const r = STEP * Math.sqrt(i), a = i * GA; i++; ll = map.layerPointToLatLng(L.point(ctr.x + r * Math.cos(a), ctr.y + r * Math.sin(a))); }
+          const done = isCompleted(p.status);
+          const m = L.circleMarker(ll, done
+            ? {radius:4.6, weight:2.6, color:colour(p.sector), fillColor:css('--panel'), fillOpacity:1, bubblingMouseEvents:false}
+            : {radius:5.5, weight:1.2, color:css('--panel'), fillColor:colour(p.sector), fillOpacity:0.95, bubblingMouseEvents:false});
+          m.bindTooltip(() => {
+            const t = el('div'); t.appendChild(el('b', null, p.name));
+            t.appendChild(el('div', null, c + ' County · ' + p.sector + ' · ' + p.category));
+            t.appendChild(el('div', null, p.status + (p.completion ? ', completion ' + p.completion : '')));
+            return t;
+          }, {className:'tip', direction:'top', offset:[0,-6]});
+          m.on('click', () => selectCounty(c, false));
+          dotLayer.addLayer(m);
+        });
+      });
+    }
+    map.on('zoomend', drawDots);
+
+    // ---------- panel
+    function selectCounty(c, zoom){
+      state.county = (state.county === c && !zoom) ? null : c;
+      jump.value = state.county || '';
+      countyLayer.eachLayer(l => {
+        const sel = l.feature.properties.county === state.county;
+        l.setStyle(countyStyle(sel));
+        if (sel && zoom) map.fitBounds(l.getBounds(), {padding:[30,30], maxZoom:10});
+      });
+      render();
+    }
+
+    function projectItem(p, here){
+      const li = el('li');
+      const n = el('div', 'pname'); const d = el(isCompleted(p.status) ? 'span' : 'span', isCompleted(p.status) ? 'ring' : 'dot');
+      if (isCompleted(p.status)) d.style.borderColor = colour(p.sector); else d.style.background = colour(p.sector);
+      n.appendChild(d); n.appendChild(document.createTextNode(p.name));
+      if (p.category === 'Programme') n.appendChild(el('span', 'tag', 'Programme'));
+      li.appendChild(n);
+      const yrs = [...p.years].sort((a, b) => fyOrder(a) - fyOrder(b));
+      li.appendChild(el('div', 'pmeta', [...p.donors].join(', ') + '. Funded ' + (yrs.length > 1 ? yrs[0] + ' to ' + yrs[yrs.length - 1] + ' (' + yrs.length + ' budgets)' : 'in ' + yrs[0]) + '.'));
+      li.appendChild(el('div', 'pmeta', p.status + (p.statusNote ? ' (' + p.statusNote + ')' : '') + (p.completion ? ', completion ' + p.completion : '')));
+      const multi = p.lines.some(l => l.counties.length > 1);
+      li.appendChild(el('div', 'pamt', here && multi ? ksh(p.share) + ' estimated here (allocation ' + ksh(p.alloc) + ' shared across its counties)' : ksh(p.alloc) + ' allocated'));
+      return li;
+    }
+
+    function render(){
+      const F = filteredLines();
+      // split each line's amount equally across its counties
+      const byCountyLines = {};
+      F.forEach(l => { if (l.loc === 'County') l.counties.forEach(c => (byCountyLines[c] ||= []).push(Object.assign({}, l, {_share: l.amount / l.counties.length}))); });
+      const byCounty = {};
+      Object.entries(byCountyLines).forEach(([c, ls]) => byCounty[c] = groupProjects(ls).map(p => Object.assign(p, {status: projectInfo.get(p.key).status, statusNote: projectInfo.get(p.key).statusNote, category: projectInfo.get(p.key).category}))
+        .sort((a, b) => b.share - a.share));
+      current = {byCounty};
+      drawDots(); drawLegend(byCounty); drawTable(F);
+
+      const box = $('detail'); box.replaceChildren();
+      if (state.county) {
+        const list = byCounty[state.county] || [];
+        const s = el('div', 'summary');
+        const head = el('div', 'row'); head.style.justifyContent = 'space-between';
+        const h = el('h2', null, state.county + ' County'); h.style.margin = '0'; head.appendChild(h);
+        const back = el('button', 'linkbtn', 'Show all counties'); back.type = 'button'; back.addEventListener('click', () => selectCounty(state.county, false));
+        head.appendChild(back); s.appendChild(head);
+        s.appendChild(el('div', 'big', ksh(list.reduce((t, p) => t + p.share, 0))));
+        s.appendChild(el('div', 'sub', 'Estimated allocation to ' + list.length + (list.length === 1 ? ' project' : ' projects') + ' for these filters'));
+        box.appendChild(s);
+        if (!list.length) box.appendChild(el('p', 'empty', 'No projects in ' + state.county + ' for these filters.'));
+        else { const ul = el('ul', 'plist'); list.forEach(p => ul.appendChild(projectItem(p, true))); box.appendChild(ul); }
+        box.appendChild(el('p', 'note', 'Amounts are budget allocations, not disbursements. A project listed in several counties has its allocation split equally between them.'));
+        return;
+      }
+      const all = groupProjects(F);
+      const total = F.reduce((t, l) => t + l.amount, 0);
+      const mappedLines = F.filter(l => l.loc === 'County');
+      const s = el('div', 'summary');
+      s.appendChild(el('div', 'big', ksh(total)));
+      const progs = all.filter(p => projectInfo.get(p.key).category === 'Programme').length;
+      s.appendChild(el('div', 'sub', 'Allocated to ' + (all.length - progs) + ' projects and ' + progs + ' programmes for these filters'));
+      const st = el('div', 'stats');
+      const stat = (b, t) => { const x = el('div', 'stat'); x.appendChild(el('b', null, b)); x.appendChild(el('span', null, t)); return x; };
+      st.appendChild(stat(ksh(mappedLines.reduce((t, l) => t + l.amount, 0)), 'on the map, in ' + groupProjects(mappedLines).length + ' projects'));
+      st.appendChild(stat(ksh(total - mappedLines.reduce((t, l) => t + l.amount, 0)), 'national or unspecified (table below the map)'));
+      s.appendChild(st); box.appendChild(s);
+
+      box.appendChild(el('h2', null, 'Counties with the most projects'));
+      const ranked = Object.entries(byCounty).map(([c, l]) => [c, l.length]).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+      if (!ranked.length) box.appendChild(el('p', 'empty', 'No projects match these filters. Choose All in one of the filters above.'));
+      const top = ranked.length ? ranked[0][1] : 1;
+      const ul = el('ul', 'countylist');
+      ranked.slice(0, 10).forEach(([c, v]) => {
+        const li = el('li'); const b = el('button', 'countybtn'); b.type = 'button';
+        b.appendChild(el('span', 'cname', c)); b.appendChild(el('span', null, v + (v === 1 ? ' project' : ' projects')));
+        const bar = el('span', 'bar'); const i = el('i'); i.style.width = (100 * v / top).toFixed(1) + '%'; bar.appendChild(i); b.appendChild(bar);
+        b.addEventListener('click', () => selectCounty(c, true));
+        li.appendChild(b); ul.appendChild(li);
+      });
+      box.appendChild(ul);
+
+      const unk = Object.entries(unknownCounties);
+      if (unk.length) {
+        const w = el('div', 'warn');
+        w.textContent = 'County names not recognised in projects.csv (these lines are not on the map): ' + unk.map(([n, k]) => '"' + n + '" (' + k + ')').join(', ') + '. Fix the spelling, or add the name to countyAliases in index.html.';
+        box.appendChild(w);
+      }
+      box.appendChild(el('p', 'note', 'Source: National Treasury External Resources Handbooks (budget estimates) and the project geolocation sheet. Data: ' + lines.length + ' project lines, ' + YEARS.join(', ') + '.'));
+    }
+
+    // ---------- table of national / unspecified projects
+    const COLS = [
+      {k:'name', label:'Project'}, {k:'category', label:'Type'}, {k:'sector', label:'Sector'}, {k:'donors', label:'Donor(s)'},
+      {k:'types', label:'Funding'}, {k:'years', label:'Years funded'}, {k:'alloc', label:'Allocation', num:true},
+      {k:'completion', label:'Completion', num:true}, {k:'status', label:'Status'}, {k:'loc', label:'Location'}
+    ];
+    const sort = {k:'alloc', dir:-1};
+    const headRow = document.querySelector('#offtable thead tr');
+    COLS.forEach(c => {
+      const th = el('th', c.num ? 'num' : null); th.scope = 'col';
+      const b = el('button', null, c.label); b.type = 'button';
+      b.addEventListener('click', () => { sort.dir = sort.k === c.k ? -sort.dir : (c.num ? -1 : 1); sort.k = c.k; drawTable(lastF); });
+      th.appendChild(b); headRow.appendChild(th);
+    });
+    let lastF = [];
+    function drawTable(F){
+      lastF = F;
+      const off = F.filter(l => l.loc !== 'County');
+      const rows = groupProjects(off).map(p => {
+        const info = projectInfo.get(p.key);
+        const locs = [...new Set(p.lines.map(l => l.loc))];
+        const yrs = [...p.years].sort((a, b) => fyOrder(a) - fyOrder(b));
+        return {p, name:p.name, category:info.category, sector:p.sector, donors:[...p.donors].join(', '), types:[...p.types].sort().join(' & '),
+          years:yrs.join(', '), alloc:p.alloc, completion:p.completion || 0, status:info.status, loc:locs.join(' / ')};
+      });
+      rows.sort((a, b) => { const x = a[sort.k], y = b[sort.k]; return (typeof x === 'number' ? x - y : String(x).localeCompare(String(y))) * sort.dir; });
+      headRow.querySelectorAll('th').forEach((th, i) => th.setAttribute('aria-sort', COLS[i].k === sort.k ? (sort.dir > 0 ? 'ascending' : 'descending') : 'none'));
+      const nat = rows.filter(r => r.loc.includes('National')).length;
+      $('t-cap').textContent = rows.length + ' projects (' + nat + ' national, ' + (rows.length - nat) + ' with no county given), ' + ksh(rows.reduce((t, r) => t + r.alloc, 0)) + ' allocated.';
+      const tb = document.querySelector('#offtable tbody'); tb.replaceChildren();
+      if (!rows.length) { const tr = el('tr'); const td = el('td', 'empty', 'None for these filters.'); td.colSpan = COLS.length; tr.appendChild(td); tb.appendChild(tr); return; }
+      rows.forEach(r => {
+        const tr = el('tr');
+        COLS.forEach(c => {
+          const td = el('td', c.num ? 'num' : null);
+          if (c.k === 'name') { const d = el('span', isCompleted(r.status) ? 'ring' : 'dot'); if (isCompleted(r.status)) d.style.borderColor = colour(r.sector); else d.style.background = colour(r.sector); td.appendChild(d); td.appendChild(document.createTextNode(r.name)); }
+          else if (c.k === 'alloc') td.textContent = ksh(r.alloc);
+          else if (c.k === 'completion') td.textContent = r.completion || '–';
+          else td.textContent = r[c.k] || '–';
+          tr.appendChild(td);
+        });
+        tb.appendChild(tr);
+      });
+    }
+
+    render();
+    matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { countyLayer.eachLayer(l => l.setStyle(countyStyle(l.feature.properties.county === state.county))); render(); });
+  }
+})();
+</script>
+</body>
+</html>
